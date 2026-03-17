@@ -1,0 +1,68 @@
+import random
+import pandas as pd
+random_alphas = [i for i in range(230000,231100)]+[i for i in range(240000,241100)]+[i for i in range(250000,251100)]
+MIDS = {}
+for mid in random_alphas:
+    lbp = ['First Choice','Second Choice','Third Choice']
+    random.shuffle(lbp)
+    cbp = ['First Choice','Second Choice','Third Choice']
+    random.shuffle(cbp)
+    while cbp[0] == lbp[0] or cbp[1] == lbp[1] or cbp[2] == lbp[2]:
+        random.shuffle(cbp)
+    pbp = ['First Choice','Second Choice','Third Choice']
+    random.shuffle(pbp)
+    while pbp[0] == lbp[0] or pbp[1] == lbp[1] or pbp[2] == lbp[2] or pbp[0] == cbp[0] or pbp[1] == cbp[1] or pbp[2] == cbp[2]:
+        random.shuffle(pbp)
+    if random.random() < 0.8:
+        leave = 'No'
+    else:
+        leave = 'Yes'
+    p = ['First Choice','Second Choice', 'Third Choice', 'nan', 'nan']
+    if random.random() < 0.5:
+        random.shuffle(p)
+    else:
+        sam = ['Second Choice', 'Third Choice', 'nan', 'nan']
+        random.shuffle(sam)
+        p = ['First Choice'] + sam
+    c = ['First Choice', 'Second Choice', 'Third Choice', 'nan', 'nan']
+    if random.random() < 0.5:
+        random.shuffle(c)
+    else:
+        zim = ['Second Choice', 'Third Choice', 'nan', 'nan']
+        random.shuffle(zim)
+        c = ['First Choice'] + zim
+    if mid < 240000:
+        rank = '1/C'
+    elif mid < 250000:
+        rank = '2/C'
+    elif mid < 260000:
+        rank = '3/C'
+    MIDS[mid] = {'Timestamp': '2025-08-27 11:17:54.353000', 
+            'Alpha (NO M, example: 265928)': mid, 
+            'Overall Preference Ranking [PTE]': lbp[1],
+            'Overall Preference Ranking [Cruise]': lbp[2],
+            'Overall Preference Ranking [Leave]': lbp[0],
+            'Leave Block Preference [Block 1]': lbp[0], 
+            'Leave Block Preference [Block 2]': lbp[1], 
+            'Leave Block Preference [Block 3]': lbp[2], 
+            'Do you want to voluntarily give up leave?': leave, 
+            'PTE Preferences [YPs]': p[0], 
+            'PTE Preferences [MAGTF]': p[1], 
+            'PTE Preferences [CSTS]': p[2], 
+            'PTE Preferences [NASS]': p[3], 
+            'PTE Preferences [STEM]': p[4], 
+            'PTE Block Preference [Block 1]': pbp[0], 
+            'PTE Block Preference [Block 2]': pbp[1], 
+            'PTE Block Preference [Block 3]': pbp[2], 
+            'Cruise Preferences [SWO]': c[0], 
+            'Cruise Preferences [SWO(N)]': c[1], 
+            'Cruise Preferences [Submarine]': c[2], 
+            'Cruise Preferences [Leatherneck]': c[3], 
+            'Cruise Preferences [Aviation]': c[4], 
+            'Cruise Preferences [PROTRAMID]': 'nan',
+            'Cruise Block Preference [Block 1]': cbp[0], 
+            'Cruise Block Preference [Block 2]': cbp[1], 
+            'Cruise Block Preference [Block 3]': cbp[2], 
+            'Class you will be after graduation': rank}
+df = pd.DataFrame.from_dict(MIDS)
+df.to_csv('MIDS_5050_YPsSWO.csv')
