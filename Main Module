@@ -1,0 +1,1745 @@
+# -*- coding: utf-8 -*-
+"""
+Created on Wed Oct 22 20:12:34 2025
+
+@author: m265928
+"""
+
+def weighted(assignment_sheet, mids_data, happiness_weight):
+    import pandas as pd
+    import xlwings as xl
+    from datetime import datetime
+    start = datetime.now()
+    
+    #Assignments Sheets
+
+    #Plebe Summer 
+    PS = dict(xl.Book(assignment_sheet).sheets['PS'].used_range.value)
+    #STEM
+    Stem = dict(xl.Book(assignment_sheet).sheets['Stem'].used_range.value)
+    #LRECS
+    LREC = dict(xl.Book(assignment_sheet).sheets['LREC'].used_range.value)
+    
+    #Mins & Maxs (included in Assignments sheet for now)
+    MINS = {}
+    p = xl.Book(assignment_sheet).sheets['PTE']['A3'].expand('down').value
+    v = xl.Book(assignment_sheet).sheets['PTE']['B3'].expand('down').value
+    for i in range(len(p)):
+        MINS[(1,p[i])] = v[i]
+        
+    v = xl.Book(assignment_sheet).sheets['PTE']['D3'].expand('down').value
+    for i in range(len(p)):
+        MINS[(2,p[i])] = v[i]
+    
+    v = xl.Book(assignment_sheet).sheets['PTE']['F3'].expand('down').value
+    for i in range(len(p)):
+        MINS[(3,p[i])] = v[i]
+        
+    c = xl.Book(assignment_sheet).sheets['CRUISE']['A3'].expand('down').value
+    v = xl.Book(assignment_sheet).sheets['CRUISE']['B3'].expand('down').value
+    for i in range(len(c)):
+        MINS[(1,c[i])] = v[i]
+        
+    v = xl.Book(assignment_sheet).sheets['CRUISE']['D3'].expand('down').value
+    for i in range(len(c)):
+        MINS[(2,c[i])] = v[i]
+    
+    v = xl.Book(assignment_sheet).sheets['CRUISE']['F3'].expand('down').value
+    for i in range(len(c)):
+        MINS[(3,c[i])] = v[i]
+        
+        
+    MAXS = {}
+    p = xl.Book(assignment_sheet).sheets['PTE']['A3'].expand('down').value
+    v = xl.Book(assignment_sheet).sheets['PTE']['C3'].expand('down').value
+    for i in range(len(p)):
+        MAXS[(1,p[i])] = v[i]
+        
+    v = xl.Book(assignment_sheet).sheets['PTE']['E3'].expand('down').value
+    for i in range(len(p)):
+        MAXS[(2,p[i])] = v[i]
+    
+    v = xl.Book(assignment_sheet).sheets['PTE']['G3'].expand('down').value
+    for i in range(len(p)):
+        MAXS[(3,p[i])] = v[i]
+        
+    c = xl.Book(assignment_sheet).sheets['CRUISE']['A3'].expand('down').value
+    v = xl.Book(assignment_sheet).sheets['CRUISE']['C3'].expand('down').value
+    for i in range(len(c)):
+        MAXS[(1,c[i])] = v[i]
+        
+    v = xl.Book(assignment_sheet).sheets['CRUISE']['E3'].expand('down').value
+    for i in range(len(c)):
+        MAXS[(2,c[i])] = v[i]
+    
+    v = xl.Book(assignment_sheet).sheets['CRUISE']['G3'].expand('down').value
+    for i in range(len(c)):
+        MAXS[(3,c[i])] = v[i]
+        
+    df = pd.read_csv(mids_data, index_col=0, dtype={'Alpha (NO M, example: 265928)':int})
+    MIDS = df.to_dict(orient='dict')
+    
+    #This will eventually be the OOM variable spot
+    #Or it will be in the assignments sheet
+    
+    OOM = {}
+    for k in MIDS.keys():
+        if int(k) < 240000:
+            OOM[k] = (int(k) - 230000) + 1
+        elif int(k) < 250000:
+            OOM[k] = (int(k) - 240000) + 1
+        elif int(k) < 260000:
+            OOM[k] = (int(k) - 250000) + 1
+    
+    MIDN = [k for k,v in MIDS.items()]
+    blocks = [1,2,3]
+    cruises = xl.Book(assignment_sheet).sheets['CRUISE']['A3'].expand('down').value
+    PTEs = xl.Book(assignment_sheet).sheets['PTE']['A3'].expand('down').value
+    trainings = PTEs + cruises
+    
+    
+    #Leave happiness: happiness of mid m if they get leave during block b, (m,b):happiness
+    choice_happiness = {'First Choice': happiness_weight['first'], 'Second Choice': happiness_weight['second'], 'Third Choice': happiness_weight['third']}
+    
+    lhappy = {}
+    for mid in MIDN:
+        if MIDS[mid]['Do you want to voluntarily give up leave?'] == 'Yes':
+            MIDS[mid]['Do you want to voluntarily give up leave?'] = 1
+        else:
+            MIDS[mid]['Do you want to voluntarily give up leave?'] = 0
+        for choice in ['First Choice', 'Second Choice', 'Third Choice']:
+            if choice == MIDS[mid]['Leave Block Preference [Block 1]']:
+                lhappy[(mid,1)] = choice_happiness[choice] #weighting first preference exponentially more than other preferences
+            elif choice == MIDS[mid]['Leave Block Preference [Block 2]']:
+                lhappy[(mid,2)] = choice_happiness[choice]
+            elif choice == MIDS[mid]['Leave Block Preference [Block 3]']:
+                lhappy[(mid,3)] = choice_happiness[choice]
+            
+    #Cruise Happiness
+    chappy = {}
+    #Initialize list with all 0's
+    for mid in MIDN:
+        for c in cruises:
+            for choice in ['First Choice', 'Second Choice', 'Third Choice']:
+                chappy[(mid,1,c)] = 0
+                chappy[(mid,2,c)] = 0
+                chappy[(mid,3,c)] = 0
+    for mid in MIDN:
+        for c in cruises:
+            for choice in ['First Choice', 'Second Choice', 'Third Choice']:
+                #Do they get what they want?
+                if choice == MIDS[mid][f'Cruise Preferences [{c}]']:
+                    chappy[(mid,1,c)] = choice_happiness[choice]
+                    chappy[(mid,2,c)] = choice_happiness[choice]
+                    chappy[(mid,3,c)] = choice_happiness[choice]
+                #Do they get it WHEN they want it
+                if choice == MIDS[mid]['Cruise Block Preference [Block 1]']:
+                    try:
+                        chappy[(mid,1,c)] = (chappy[(mid,1,c)]+choice_happiness[choice])/2
+                    except KeyError:
+                        chappy[(mid,1,c)] = 0 
+                elif choice == MIDS[mid]['Cruise Block Preference [Block 2]']:
+                    try:
+                        chappy[(mid,2,c)] = (chappy[(mid,2,c)]+choice_happiness[choice])/2
+                    except KeyError:
+                        chappy[(mid,2,c)] = 0 
+                elif choice == MIDS[mid]['Cruise Block Preference [Block 3]']:
+                    try:
+                        chappy[(mid,3,c)] = (chappy[(mid,3,c)]+choice_happiness[choice])/2
+                    except KeyError:
+                        chappy[(mid,2,c)] = 0 
+                    
+    #PTE Happiness
+    phappy = {}
+    #Initialize list with all 0's
+    for mid in MIDN:
+        for p in PTEs:
+            for choice in ['First Choice', 'Second Choice', 'Third Choice']:
+                phappy[(mid,1,p)] = 0
+                phappy[(mid,2,p)] = 0
+                phappy[(mid,3,p)] = 0
+    for mid in MIDN:
+        for p in PTEs:
+            for choice in ['First Choice', 'Second Choice', 'Third Choice']:
+                #Do they get what they want?
+                if choice == MIDS[mid][f'PTE Preferences [{p}]']:
+                    phappy[(mid,1,p)] = choice_happiness[choice]
+                    phappy[(mid,2,p)] = choice_happiness[choice]
+                    phappy[(mid,3,p)] = choice_happiness[choice]
+                #Do they get it WHEN they want it
+                if choice == MIDS[mid]['PTE Block Preference [Block 1]']:
+                    try:
+                        phappy[(mid,1,p)] = (phappy[(mid,1,p)]+choice_happiness[choice])/2
+                    except KeyError:
+                        phappy[(mid,1,p)] = 0 
+                elif choice == MIDS[mid]['PTE Block Preference [Block 2]']:
+                    try:
+                        phappy[(mid,2,p)] = (phappy[(mid,2,p)]+choice_happiness[choice])/2
+                    except KeyError:
+                        phappy[(mid,2,p)] = 0 
+                elif choice == MIDS[mid]['PTE Block Preference [Block 3]']:
+                    try:
+                        phappy[(mid,3,p)] = (phappy[(mid,3,p)]+choice_happiness[choice])/2
+                    except KeyError:
+                        phappy[(mid,2,p)] = 0 
+    
+    #Fill in missing data with 0's for assignment purposes.
+    for mid in MIDN:
+        PS[(mid,1)] = 0
+        PS[(mid,2)] = 0
+        PS[(mid,3)] = 0
+        try:
+            PS[(mid,PS[mid])] = 1
+        except KeyError:
+            x=62
+            
+    for mid in MIDN:
+        Stem[(mid,1)] = 0
+        Stem[(mid,2)] = 0
+        Stem[(mid,3)] = 0
+        try:
+            Stem[(mid,Stem[mid])] = 1
+        except KeyError:
+            x=62
+            
+    for mid in MIDN:
+        LREC[(mid,1)] = 0
+        LREC[(mid,2)] = 0
+        LREC[(mid,3)] = 0
+        try:
+            LREC[(mid,LREC[mid])] = 1
+        except KeyError:
+            x=62
+            
+    ThreeC = {}
+    for mid in MIDN:
+        ThreeC[mid] = 0
+        if MIDS[mid]['Class you will be after graduation'] == '3/C':
+            ThreeC[mid] = 1
+        
+    import pyomo.environ as pyo
+
+    model = pyo.ConcreteModel()
+    
+    #Var for assignment of leave
+    model.l = pyo.Var(MIDN, blocks, domain=pyo.Boolean) 
+    
+    #Var for assignment of PTEs
+    model.p = pyo.Var(MIDN, blocks, PTEs, domain=pyo.Boolean)
+    
+    #Var for assignment of Cruises
+    model.c = pyo.Var(MIDN, blocks, cruises, domain=pyo.Boolean)
+        
+    equalizer = happiness_weight['first'] - happiness_weight['second']
+    
+    def obj(model):
+        return (
+        (sum(model.l[m,b]*lhappy[m,b]*1/OOM[m] for m in MIDN for b in blocks) + 
+        sum(model.c[m,b,c]*chappy[m,b,c]*1/OOM[m] for m in MIDN for b in blocks for c in cruises) + 
+        sum(model.p[m,b,p]*phappy[m,b,p]*1/OOM[m] for m in MIDN for b in blocks for p in PTEs))
+    )
+    model.obj = pyo.Objective(rule = obj, sense = pyo.maximize)
+    
+    def one(model, m):
+        return sum(model.l[m,b] for b in blocks) >= 1 - MIDS[m]['Do you want to voluntarily give up leave?']
+    model.one = pyo.Constraint(MIDN, rule = one)
+    
+    def two(model, m):
+        return sum(model.c[m,b,c] for b in blocks for c in cruises) == 1
+    model.two = pyo.Constraint(MIDN, rule = two)
+    
+    def three(model, m):
+        return sum(model.p[m,b,p] for b in blocks for p in PTEs) >= 1
+    model.three = pyo.Constraint(MIDN, rule = three)
+    
+    def four(model, m, b):
+        return model.l[m,b] + sum(model.p[m,b,p] for p in PTEs) + sum(model.c[m,b,c] for c in cruises) == 1
+    model.four = pyo.Constraint(MIDN, blocks, rule = four)
+    
+    def five(model, m, p):
+        return sum(model.p[m,b,p] for b in blocks) <= 1
+    model.five = pyo.Constraint(MIDN, PTEs, rule = five)
+    
+    def six(model, b, p):
+        return sum(model.p[m,b,p] for m in MIDN) >= MINS[b,p]
+    model.six = pyo.Constraint(blocks, PTEs, rule = six)
+    
+    def six1(model, b, p):
+        return sum(model.p[m,b,p] for m in MIDN) <= MAXS[b,p]
+    model.six1 = pyo.Constraint(blocks, PTEs, rule = six1)
+    
+    def seven(model, b, c):
+        return sum(model.c[m,b,c] for m in MIDN) >= MINS[b,c]
+    model.seven = pyo.Constraint(blocks, cruises, rule = seven)
+    
+    def seven1(model, b, c):
+        return sum(model.c[m,b,c] for m in MIDN) <= MAXS[b,c]
+    model.seven1 = pyo.Constraint(blocks, cruises, rule = seven1)
+    
+    #def ate(model, m,b):
+    #    return model.p[m,b,'PS'] == PS[m,b]
+    #model.ate = pyo.Constraint(MIDN, blocks, rule = ate)
+    
+    #def ate2(model, m,b):
+    #    return model.p[m,b,'STEM'] == Stem[m,b]
+    #model.ate2 = pyo.Constraint(MIDN, blocks, rule = ate2)
+    
+    #def ate3(model, m,b):
+    #    return model.p[m,b,'LREC'] == LREC[m,b]
+    #model.ate3 = pyo.Constraint(MIDN, blocks, rule = ate3)
+    
+    def nine(model, m):
+        return sum(model.c[m,b,'PROTRAMID'] for b in blocks) == ThreeC[m]
+    model.nine = pyo.Constraint(MIDN, rule = nine)
+    
+    solver_result = pyo.SolverFactory('glpk').solve(model)
+    solve_status = solver_result.solver.termination_condition
+    print(f'Solver Status: {solve_status}')
+    
+    end = datetime.now()
+    elapsed = end - start
+    print(f"Pyomo model execution time: {elapsed.total_seconds():.2f} seconds")
+    
+    
+    totals = {}
+    for c in cruises:
+        for b in blocks:
+            key = (c,b)
+            totals[key] = 0
+    for mid in MIDN:
+        for c in cruises:
+            for b in blocks:
+                if pyo.value(model.c[mid,b,c]) == 1:
+                    key = (c,b)
+                    totals[key] += 1
+    for p in PTEs:
+        for b in blocks:
+            key = (p,b)
+            totals[key] = 0
+    for mid in MIDN:
+        for p in PTEs:
+            for b in blocks:
+                if pyo.value(model.p[mid,b,p]) == 1:
+                    key = (p,b)
+                    totals[key] += 1
+    totals_df = pd.DataFrame.from_dict(totals, orient = 'index')
+    
+    assignments = {}
+    for mid in MIDN:
+        list = []
+        happy = 0
+        if MIDS[mid]['Do you want to voluntarily give up leave?'] == 1:
+            happy += 0
+        for b in blocks:
+            if pyo.value(model.l[mid,b]) == 1:
+                i = 'Leave'
+                happy += lhappy[mid,b]
+            for c in cruises:
+                if pyo.value(model.c[mid,b,c]) == 1:
+                    i = c
+                    happy += chappy[mid,b,c]
+            for p in PTEs:
+                if pyo.value(model.p[mid,b,p]) == 1:
+                    i = p
+                    happy += phappy[mid,b,p]
+                    
+                    
+            list.append(f'{b}: {i}')
+        list.append(happy)
+        assignments[mid] = list
+        
+    #Three classes and three happiness weights per class
+    divisor = 9*sum(happiness_weight['first'] for n in range(1,1101))
+    obj = 100*(sum(assignments[i][3] for i in MIDN))/divisor
+    print(f'The model objective is: {obj:.2f}%')
+    
+    example1 = assignments['230001']
+    var1 = 3*happiness_weight['first']
+    var2 = 2.5*happiness_weight['first']
+    var3 = (2*happiness_weight['first'])+happiness_weight['second']
+    
+    dataframe = {}
+    totalonehundo = 0
+    for mid in MIDN:
+        onehundo = 0
+        if assignments[mid][3] == var1:
+            onehundo = 1
+            totalonehundo += 1
+        elif assignments[mid][3] == var2 and int(mid) >= 250000:
+            onehundo = 1
+            totalonehundo += 1
+        elif assignments[mid][3] == var3 and MIDS[mid]['Do you want to voluntarily give up leave?']:
+            onehundo = 1
+            totalonehundo += 1
+        dataframe[f'"{mid}"'] = assignments[mid] + [OOM[mid]] + [MIDS[mid]['Class you will be after graduation']] + [onehundo]
+        
+    obj2 = 100*(totalonehundo/(len(MIDN)))
+    print(f"The percent of 'totally happy' MIDN is: {obj2:.2f}%")
+    
+    print(f'Example assignment output for MIDN 230001 including their happiness score out of {var1}: {example1}')
+    
+    
+
+    
+    df = pd.DataFrame(dataframe)
+    df = df.T
+    
+    import altair as alt
+
+    
+    base = (
+        alt.Chart(df).mark_point(size=5).encode(
+        alt.X('4:Q').title('OOM'),
+        alt.Y('3:Q').title('Happiness'),
+        alt.Color('5:N')
+    ).properties(
+        width = 500,
+        height = 400
+    )
+    )
+      
+    
+    chart1 = base.facet(
+        column = alt.Column('5:N').title('Happiness vs OOM of the 3 Classes (Weighted)'),
+    )
+    
+    chart2 = alt.Chart(df).mark_line().encode(
+        alt.X('4:Q').title('OOM'),
+        alt.Y('3:Q').title('Happiness')
+    ).properties(
+        width = 400,
+        height = 300,
+        title = 'Regression of Happiness vs OOM (Weighted)'
+    ).transform_regression(
+        '4', '3'
+    )
+        
+    
+    chart3 = alt.Chart(df).mark_bar().encode(
+        alt.X('4:Q').bin(step=100).title('OOM'),
+        alt.Y('mean(6):Q', scale=alt.Scale(domain=[0, 1])).title("Percent of MIDN 'Perfectly Happy'"),
+        [alt.Tooltip('mean(6):Q').title("Percent:").format('.3f')]
+    ).properties(
+        height = 300,
+        width = 400,
+        title = "Number of 'Perfectly Happy' MIDN binned by OOM (Weighted)"
+    )
+        
+   
+    print('hello world')
+    
+    return chart1, chart2, chart3, totals_df, base
+    
+    
+    
+    
+def unweighted(assignment_sheet, mids_data, happiness_weight):
+    import pandas as pd
+    import xlwings as xl
+    from datetime import datetime
+    start = datetime.now()
+    
+    #Assignments Sheets
+
+    #Plebe Summer 
+    PS = dict(xl.Book(assignment_sheet).sheets['PS'].used_range.value)
+    #STEM
+    Stem = dict(xl.Book(assignment_sheet).sheets['Stem'].used_range.value)
+    #LRECS
+    LREC = dict(xl.Book(assignment_sheet).sheets['LREC'].used_range.value)
+    
+    #Mins & Maxs (included in Assignments sheet for now)
+    MINS = {}
+    p = xl.Book(assignment_sheet).sheets['PTE']['A3'].expand('down').value
+    v = xl.Book(assignment_sheet).sheets['PTE']['B3'].expand('down').value
+    for i in range(len(p)):
+        MINS[(1,p[i])] = v[i]
+        
+    v = xl.Book(assignment_sheet).sheets['PTE']['D3'].expand('down').value
+    for i in range(len(p)):
+        MINS[(2,p[i])] = v[i]
+    
+    v = xl.Book(assignment_sheet).sheets['PTE']['F3'].expand('down').value
+    for i in range(len(p)):
+        MINS[(3,p[i])] = v[i]
+        
+    c = xl.Book(assignment_sheet).sheets['CRUISE']['A3'].expand('down').value
+    v = xl.Book(assignment_sheet).sheets['CRUISE']['B3'].expand('down').value
+    for i in range(len(c)):
+        MINS[(1,c[i])] = v[i]
+        
+    v = xl.Book(assignment_sheet).sheets['CRUISE']['D3'].expand('down').value
+    for i in range(len(c)):
+        MINS[(2,c[i])] = v[i]
+    
+    v = xl.Book(assignment_sheet).sheets['CRUISE']['F3'].expand('down').value
+    for i in range(len(c)):
+        MINS[(3,c[i])] = v[i]
+        
+        
+    MAXS = {}
+    p = xl.Book(assignment_sheet).sheets['PTE']['A3'].expand('down').value
+    v = xl.Book(assignment_sheet).sheets['PTE']['C3'].expand('down').value
+    for i in range(len(p)):
+        MAXS[(1,p[i])] = v[i]
+        
+    v = xl.Book(assignment_sheet).sheets['PTE']['E3'].expand('down').value
+    for i in range(len(p)):
+        MAXS[(2,p[i])] = v[i]
+    
+    v = xl.Book(assignment_sheet).sheets['PTE']['G3'].expand('down').value
+    for i in range(len(p)):
+        MAXS[(3,p[i])] = v[i]
+        
+    c = xl.Book(assignment_sheet).sheets['CRUISE']['A3'].expand('down').value
+    v = xl.Book(assignment_sheet).sheets['CRUISE']['C3'].expand('down').value
+    for i in range(len(c)):
+        MAXS[(1,c[i])] = v[i]
+        
+    v = xl.Book(assignment_sheet).sheets['CRUISE']['E3'].expand('down').value
+    for i in range(len(c)):
+        MAXS[(2,c[i])] = v[i]
+    
+    v = xl.Book(assignment_sheet).sheets['CRUISE']['G3'].expand('down').value
+    for i in range(len(c)):
+        MAXS[(3,c[i])] = v[i]
+        
+    df = pd.read_csv(mids_data, index_col=0, dtype={'Alpha (NO M, example: 265928)':int})
+    MIDS = df.to_dict(orient='dict')
+    
+    #This will eventually be the OOM variable spot
+    #Or it will be in the assignments sheet
+    
+    OOM = {}
+    for k in MIDS.keys():
+        if int(k) < 240000:
+            OOM[k] = (int(k) - 230000) + 1
+        elif int(k) < 250000:
+            OOM[k] = (int(k) - 240000) + 1
+        elif int(k) < 260000:
+            OOM[k] = (int(k) - 250000) + 1
+    
+    MIDN = [k for k,v in MIDS.items()]
+    blocks = [1,2,3]
+    cruises = xl.Book(assignment_sheet).sheets['CRUISE']['A3'].expand('down').value
+    PTEs = xl.Book(assignment_sheet).sheets['PTE']['A3'].expand('down').value
+    trainings = PTEs + cruises
+    
+    
+    #Leave happiness: happiness of mid m if they get leave during block b, (m,b):happiness
+    choice_happiness = {'First Choice': happiness_weight['first'], 'Second Choice': happiness_weight['second'], 'Third Choice': happiness_weight['third']}
+    
+    lhappy = {}
+    for mid in MIDN:
+        if MIDS[mid]['Do you want to voluntarily give up leave?'] == 'Yes':
+            MIDS[mid]['Do you want to voluntarily give up leave?'] = 1
+        else:
+            MIDS[mid]['Do you want to voluntarily give up leave?'] = 0
+        for choice in ['First Choice', 'Second Choice', 'Third Choice']:
+            if choice == MIDS[mid]['Leave Block Preference [Block 1]']:
+                lhappy[(mid,1)] = choice_happiness[choice] #weighting first preference exponentially more than other preferences
+            elif choice == MIDS[mid]['Leave Block Preference [Block 2]']:
+                lhappy[(mid,2)] = choice_happiness[choice]
+            elif choice == MIDS[mid]['Leave Block Preference [Block 3]']:
+                lhappy[(mid,3)] = choice_happiness[choice]
+            
+    #Cruise Happiness
+    chappy = {}
+    #Initialize list with all 0's
+    for mid in MIDN:
+        for c in cruises:
+            for choice in ['First Choice', 'Second Choice', 'Third Choice']:
+                chappy[(mid,1,c)] = 0
+                chappy[(mid,2,c)] = 0
+                chappy[(mid,3,c)] = 0
+    for mid in MIDN:
+        for c in cruises:
+            for choice in ['First Choice', 'Second Choice', 'Third Choice']:
+                #Do they get what they want?
+                if choice == MIDS[mid][f'Cruise Preferences [{c}]']:
+                    chappy[(mid,1,c)] = choice_happiness[choice]
+                    chappy[(mid,2,c)] = choice_happiness[choice]
+                    chappy[(mid,3,c)] = choice_happiness[choice]
+                #Do they get it WHEN they want it
+                if choice == MIDS[mid]['Cruise Block Preference [Block 1]']:
+                    try:
+                        chappy[(mid,1,c)] = (chappy[(mid,1,c)]+choice_happiness[choice])/2
+                    except KeyError:
+                        chappy[(mid,1,c)] = 0 
+                elif choice == MIDS[mid]['Cruise Block Preference [Block 2]']:
+                    try:
+                        chappy[(mid,2,c)] = (chappy[(mid,2,c)]+choice_happiness[choice])/2
+                    except KeyError:
+                        chappy[(mid,2,c)] = 0 
+                elif choice == MIDS[mid]['Cruise Block Preference [Block 3]']:
+                    try:
+                        chappy[(mid,3,c)] = (chappy[(mid,3,c)]+choice_happiness[choice])/2
+                    except KeyError:
+                        chappy[(mid,2,c)] = 0 
+                    
+    #PTE Happiness
+    phappy = {}
+    #Initialize list with all 0's
+    for mid in MIDN:
+        for p in PTEs:
+            for choice in ['First Choice', 'Second Choice', 'Third Choice']:
+                phappy[(mid,1,p)] = 0
+                phappy[(mid,2,p)] = 0
+                phappy[(mid,3,p)] = 0
+    for mid in MIDN:
+        for p in PTEs:
+            for choice in ['First Choice', 'Second Choice', 'Third Choice']:
+                #Do they get what they want?
+                if choice == MIDS[mid][f'PTE Preferences [{p}]']:
+                    phappy[(mid,1,p)] = choice_happiness[choice]
+                    phappy[(mid,2,p)] = choice_happiness[choice]
+                    phappy[(mid,3,p)] = choice_happiness[choice]
+                #Do they get it WHEN they want it
+                if choice == MIDS[mid]['PTE Block Preference [Block 1]']:
+                    try:
+                        phappy[(mid,1,p)] = (phappy[(mid,1,p)]+choice_happiness[choice])/2
+                    except KeyError:
+                        phappy[(mid,1,p)] = 0 
+                elif choice == MIDS[mid]['PTE Block Preference [Block 2]']:
+                    try:
+                        phappy[(mid,2,p)] = (phappy[(mid,2,p)]+choice_happiness[choice])/2
+                    except KeyError:
+                        phappy[(mid,2,p)] = 0 
+                elif choice == MIDS[mid]['PTE Block Preference [Block 3]']:
+                    try:
+                        phappy[(mid,3,p)] = (phappy[(mid,3,p)]+choice_happiness[choice])/2
+                    except KeyError:
+                        phappy[(mid,2,p)] = 0 
+    
+    #Fill in missing data with 0's for assignment purposes.
+    for mid in MIDN:
+        PS[(mid,1)] = 0
+        PS[(mid,2)] = 0
+        PS[(mid,3)] = 0
+        try:
+            PS[(mid,PS[mid])] = 1
+        except KeyError:
+            x=62
+            
+    for mid in MIDN:
+        Stem[(mid,1)] = 0
+        Stem[(mid,2)] = 0
+        Stem[(mid,3)] = 0
+        try:
+            Stem[(mid,Stem[mid])] = 1
+        except KeyError:
+            x=62
+            
+    for mid in MIDN:
+        LREC[(mid,1)] = 0
+        LREC[(mid,2)] = 0
+        LREC[(mid,3)] = 0
+        try:
+            LREC[(mid,LREC[mid])] = 1
+        except KeyError:
+            x=62
+            
+    ThreeC = {}
+    for mid in MIDN:
+        ThreeC[mid] = 0
+        if MIDS[mid]['Class you will be after graduation'] == '3/C':
+            ThreeC[mid] = 1
+        
+    import pyomo.environ as pyo
+
+    model = pyo.ConcreteModel()
+    
+    #Var for assignment of leave
+    model.l = pyo.Var(MIDN, blocks, domain=pyo.Boolean) 
+    
+    #Var for assignment of PTEs
+    model.p = pyo.Var(MIDN, blocks, PTEs, domain=pyo.Boolean)
+    
+    #Var for assignment of Cruises
+    model.c = pyo.Var(MIDN, blocks, cruises, domain=pyo.Boolean)
+        
+    equalizer = happiness_weight['first'] - happiness_weight['second']
+    
+    def obj(model):
+        return (
+        (sum(model.l[m,b]*lhappy[m,b] for m in MIDN for b in blocks) + 
+        sum(model.c[m,b,c]*chappy[m,b,c] for m in MIDN for b in blocks for c in cruises) + 
+        sum((model.p[m,b,p]*phappy[m,b,p])for m in MIDN for b in blocks for p in PTEs))
+    )
+    model.obj = pyo.Objective(rule = obj, sense = pyo.maximize)
+    
+    def one(model, m):
+        return sum(model.l[m,b] for b in blocks) >= 1 - MIDS[m]['Do you want to voluntarily give up leave?']
+    model.one = pyo.Constraint(MIDN, rule = one)
+    
+    def two(model, m):
+        return sum(model.c[m,b,c] for b in blocks for c in cruises) == 1
+    model.two = pyo.Constraint(MIDN, rule = two)
+    
+    def three(model, m):
+        return sum(model.p[m,b,p] for b in blocks for p in PTEs) >= 1
+    model.three = pyo.Constraint(MIDN, rule = three)
+    
+    def four(model, m, b):
+        return model.l[m,b] + sum(model.p[m,b,p] for p in PTEs) + sum(model.c[m,b,c] for c in cruises) == 1
+    model.four = pyo.Constraint(MIDN, blocks, rule = four)
+    
+    def five(model, m, p):
+        return sum(model.p[m,b,p] for b in blocks) <= 1
+    model.five = pyo.Constraint(MIDN, PTEs, rule = five)
+    
+    def six(model, b, p):
+        return sum(model.p[m,b,p] for m in MIDN) >= MINS[b,p]
+    model.six = pyo.Constraint(blocks, PTEs, rule = six)
+    
+    def six1(model, b, p):
+        return sum(model.p[m,b,p] for m in MIDN) <= MAXS[b,p]
+    model.six1 = pyo.Constraint(blocks, PTEs, rule = six1)
+    
+    def seven(model, b, c):
+        return sum(model.c[m,b,c] for m in MIDN) >= MINS[b,c]
+    model.seven = pyo.Constraint(blocks, cruises, rule = seven)
+    
+    def seven1(model, b, c):
+        return sum(model.c[m,b,c] for m in MIDN) <= MAXS[b,c]
+    model.seven1 = pyo.Constraint(blocks, cruises, rule = seven1)
+    
+    #def ate(model, m,b):
+    #    return model.p[m,b,'PS'] == PS[m,b]
+    #model.ate = pyo.Constraint(MIDN, blocks, rule = ate)
+    
+    #def ate2(model, m,b):
+    #    return model.p[m,b,'STEM'] == Stem[m,b]
+    #model.ate2 = pyo.Constraint(MIDN, blocks, rule = ate2)
+    
+    #def ate3(model, m,b):
+    #    return model.p[m,b,'LREC'] == LREC[m,b]
+    #model.ate3 = pyo.Constraint(MIDN, blocks, rule = ate3)
+    
+    def nine(model, m):
+        return sum(model.c[m,b,'PROTRAMID'] for b in blocks) == ThreeC[m]
+    model.nine = pyo.Constraint(MIDN, rule = nine)
+    
+    solver_result = pyo.SolverFactory('glpk').solve(model)
+    solve_status = solver_result.solver.termination_condition
+    print(f'Solver Status: {solve_status}')
+    
+    end = datetime.now()
+    elapsed = end - start
+    print(f"Pyomo model execution time: {elapsed.total_seconds():.2f} seconds")
+    
+    
+    totals = {}
+    for c in cruises:
+        for b in blocks:
+            key = (c,b)
+            totals[key] = 0
+    for mid in MIDN:
+        for c in cruises:
+            for b in blocks:
+                if pyo.value(model.c[mid,b,c]) == 1:
+                    key = (c,b)
+                    totals[key] += 1
+    for p in PTEs:
+        for b in blocks:
+            key = (p,b)
+            totals[key] = 0
+    for mid in MIDN:
+        for p in PTEs:
+            for b in blocks:
+                if pyo.value(model.p[mid,b,p]) == 1:
+                    key = (p,b)
+                    totals[key] += 1
+    totals_df = pd.DataFrame.from_dict(totals, orient = 'index')
+    
+    assignments = {}
+    for mid in MIDN:
+        list = []
+        happy = 0
+        if MIDS[mid]['Do you want to voluntarily give up leave?'] == 1:
+            happy += 0
+        for b in blocks:
+            if pyo.value(model.l[mid,b]) == 1:
+                i = 'Leave'
+                happy += lhappy[mid,b]
+            for c in cruises:
+                if pyo.value(model.c[mid,b,c]) == 1:
+                    i = c
+                    happy += chappy[mid,b,c]
+            for p in PTEs:
+                if pyo.value(model.p[mid,b,p]) == 1:
+                    i = p
+                    happy += phappy[mid,b,p]
+                    
+                    
+            list.append(f'{b}: {i}')
+        list.append(happy)
+        assignments[mid] = list
+    
+    divisor = 9*sum(happiness_weight['first'] for n in range(1,1101))
+    obj = 100*(sum(assignments[i][3] for i in MIDN))/divisor
+    print(f'The model objective is: {obj:.2f}%')
+    
+    example1 = assignments['230001']
+    var1 = 3*happiness_weight['first']
+    var2 = 2.5*happiness_weight['first']
+    
+    dataframe = {}
+    totalonehundo = 0
+    for mid in MIDN:
+        onehundo = 0
+        if assignments[mid][3] == var1:
+            onehundo = 1
+            totalonehundo += 1
+        if assignments[mid][3] == var2 and int(mid) >= 250000:
+            onehundo = 1
+            totalonehundo += 1
+        dataframe[f'"{mid}"'] = assignments[mid] + [OOM[mid]] + [MIDS[mid]['Class you will be after graduation']] + [onehundo]
+        
+    obj2 = 100*(totalonehundo/(len(MIDN)))
+    print(f"The percent of 'totally happy' MIDN is: {obj2:.2f}%")
+    
+    print(f'Example assignment output for MIDN 230001 including their happiness score out of {var1}: {example1}')
+    
+    
+    df = pd.DataFrame(dataframe)
+    df = df.T
+    
+    import altair as alt
+
+    
+    base = (
+        alt.Chart(df).mark_point().encode(
+        alt.X('4:Q').title('OOM'),
+        alt.Y('3:Q').title('Happiness'),
+        alt.Color('5:N')
+    ).properties(
+        width = 250,
+        height = 200
+    )
+    )
+      
+    
+    chart1 = base.facet(
+        column = alt.Column('5:N').title('Happiness vs OOM of the 3 Classes (Un-Weighted)')
+    )
+    
+    chart2 = alt.Chart(df).mark_line().encode(
+        alt.X('4:Q').title('OOM'),
+        alt.Y('3:Q').title('Happiness')
+    ).properties(
+        width = 400,
+        height = 300,
+        title = 'Regression of Happiness vs OOM (Un-Weighted)'
+    ).transform_regression(
+        '4', '3'
+    )
+        
+    
+    chart3 = alt.Chart(df).mark_bar().encode(
+        alt.X('4:Q').bin(step=100).title('OOM'),
+        alt.Y('mean(6):Q', scale=alt.Scale(domain=[0, 1])).title("Percent of MIDN 'Perfectly Happy'"),
+        [alt.Tooltip('mean(6):Q').title("Percent:").format('.3f')]
+    ).properties(
+        height = 300,
+        width = 400,
+        title = "Number of 'Perfectly Happy' MIDN binned by OOM (Un-Weighted)"
+    )
+        
+   
+    print('hello world')
+    
+    return chart1, chart2, chart3, totals_df
+
+
+
+
+def linear(assignment_sheet, mids_data, happiness_weight, start_value = 1200):
+    import pandas as pd
+    import xlwings as xl
+    from datetime import datetime
+    start = datetime.now()
+    
+    #Assignments Sheets
+
+    #Plebe Summer 
+    PS = dict(xl.Book(assignment_sheet).sheets['PS'].used_range.value)
+    #STEM
+    Stem = dict(xl.Book(assignment_sheet).sheets['Stem'].used_range.value)
+    #LRECS
+    LREC = dict(xl.Book(assignment_sheet).sheets['LREC'].used_range.value)
+    
+    #Mins & Maxs (included in Assignments sheet for now)
+    MINS = {}
+    p = xl.Book(assignment_sheet).sheets['PTE']['A3'].expand('down').value
+    v = xl.Book(assignment_sheet).sheets['PTE']['B3'].expand('down').value
+    for i in range(len(p)):
+        MINS[(1,p[i])] = v[i]
+        
+    v = xl.Book(assignment_sheet).sheets['PTE']['D3'].expand('down').value
+    for i in range(len(p)):
+        MINS[(2,p[i])] = v[i]
+    
+    v = xl.Book(assignment_sheet).sheets['PTE']['F3'].expand('down').value
+    for i in range(len(p)):
+        MINS[(3,p[i])] = v[i]
+        
+    c = xl.Book(assignment_sheet).sheets['CRUISE']['A3'].expand('down').value
+    v = xl.Book(assignment_sheet).sheets['CRUISE']['B3'].expand('down').value
+    for i in range(len(c)):
+        MINS[(1,c[i])] = v[i]
+        
+    v = xl.Book(assignment_sheet).sheets['CRUISE']['D3'].expand('down').value
+    for i in range(len(c)):
+        MINS[(2,c[i])] = v[i]
+    
+    v = xl.Book(assignment_sheet).sheets['CRUISE']['F3'].expand('down').value
+    for i in range(len(c)):
+        MINS[(3,c[i])] = v[i]
+        
+        
+    MAXS = {}
+    p = xl.Book(assignment_sheet).sheets['PTE']['A3'].expand('down').value
+    v = xl.Book(assignment_sheet).sheets['PTE']['C3'].expand('down').value
+    for i in range(len(p)):
+        MAXS[(1,p[i])] = v[i]
+        
+    v = xl.Book(assignment_sheet).sheets['PTE']['E3'].expand('down').value
+    for i in range(len(p)):
+        MAXS[(2,p[i])] = v[i]
+    
+    v = xl.Book(assignment_sheet).sheets['PTE']['G3'].expand('down').value
+    for i in range(len(p)):
+        MAXS[(3,p[i])] = v[i]
+        
+    c = xl.Book(assignment_sheet).sheets['CRUISE']['A3'].expand('down').value
+    v = xl.Book(assignment_sheet).sheets['CRUISE']['C3'].expand('down').value
+    for i in range(len(c)):
+        MAXS[(1,c[i])] = v[i]
+        
+    v = xl.Book(assignment_sheet).sheets['CRUISE']['E3'].expand('down').value
+    for i in range(len(c)):
+        MAXS[(2,c[i])] = v[i]
+    
+    v = xl.Book(assignment_sheet).sheets['CRUISE']['G3'].expand('down').value
+    for i in range(len(c)):
+        MAXS[(3,c[i])] = v[i]
+        
+    df = pd.read_csv(mids_data, index_col=0, dtype={'Alpha (NO M, example: 265928)':int})
+    MIDS = df.to_dict(orient='dict')
+    
+    #This will eventually be the OOM variable spot
+    #Or it will be in the assignments sheet
+    
+    OOM = {}
+    for k in MIDS.keys():
+        if int(k) < 240000:
+            OOM[k] = (int(k) - 230000) + 1
+        elif int(k) < 250000:
+            OOM[k] = (int(k) - 240000) + 1
+        elif int(k) < 260000:
+            OOM[k] = (int(k) - 250000) + 1
+    
+    MIDN = [k for k,v in MIDS.items()]
+    blocks = [1,2,3]
+    cruises = xl.Book(assignment_sheet).sheets['CRUISE']['A3'].expand('down').value
+    PTEs = xl.Book(assignment_sheet).sheets['PTE']['A3'].expand('down').value
+    trainings = PTEs + cruises
+    
+    
+    #Leave happiness: happiness of mid m if they get leave during block b, (m,b):happiness
+    choice_happiness = {'First Choice': happiness_weight['first'], 'Second Choice': happiness_weight['second'], 'Third Choice': happiness_weight['third']}
+    
+    lhappy = {}
+    for mid in MIDN:
+        if MIDS[mid]['Do you want to voluntarily give up leave?'] == 'Yes':
+            MIDS[mid]['Do you want to voluntarily give up leave?'] = 1
+        else:
+            MIDS[mid]['Do you want to voluntarily give up leave?'] = 0
+        for choice in ['First Choice', 'Second Choice', 'Third Choice']:
+            if choice == MIDS[mid]['Leave Block Preference [Block 1]']:
+                lhappy[(mid,1)] = choice_happiness[choice] #weighting first preference exponentially more than other preferences
+            elif choice == MIDS[mid]['Leave Block Preference [Block 2]']:
+                lhappy[(mid,2)] = choice_happiness[choice]
+            elif choice == MIDS[mid]['Leave Block Preference [Block 3]']:
+                lhappy[(mid,3)] = choice_happiness[choice]
+            
+    #Cruise Happiness
+    chappy = {}
+    #Initialize list with all 0's
+    for mid in MIDN:
+        for c in cruises:
+            for choice in ['First Choice', 'Second Choice', 'Third Choice']:
+                chappy[(mid,1,c)] = 0
+                chappy[(mid,2,c)] = 0
+                chappy[(mid,3,c)] = 0
+    for mid in MIDN:
+        for c in cruises:
+            for choice in ['First Choice', 'Second Choice', 'Third Choice']:
+                #Do they get what they want?
+                if choice == MIDS[mid][f'Cruise Preferences [{c}]']:
+                    chappy[(mid,1,c)] = choice_happiness[choice]
+                    chappy[(mid,2,c)] = choice_happiness[choice]
+                    chappy[(mid,3,c)] = choice_happiness[choice]
+                #Do they get it WHEN they want it
+                if choice == MIDS[mid]['Cruise Block Preference [Block 1]']:
+                    try:
+                        chappy[(mid,1,c)] = (chappy[(mid,1,c)]+choice_happiness[choice])/2
+                    except KeyError:
+                        chappy[(mid,1,c)] = 0 
+                elif choice == MIDS[mid]['Cruise Block Preference [Block 2]']:
+                    try:
+                        chappy[(mid,2,c)] = (chappy[(mid,2,c)]+choice_happiness[choice])/2
+                    except KeyError:
+                        chappy[(mid,2,c)] = 0 
+                elif choice == MIDS[mid]['Cruise Block Preference [Block 3]']:
+                    try:
+                        chappy[(mid,3,c)] = (chappy[(mid,3,c)]+choice_happiness[choice])/2
+                    except KeyError:
+                        chappy[(mid,2,c)] = 0 
+                    
+    #PTE Happiness
+    phappy = {}
+    #Initialize list with all 0's
+    for mid in MIDN:
+        for p in PTEs:
+            for choice in ['First Choice', 'Second Choice', 'Third Choice']:
+                phappy[(mid,1,p)] = 0
+                phappy[(mid,2,p)] = 0
+                phappy[(mid,3,p)] = 0
+    for mid in MIDN:
+        for p in PTEs:
+            for choice in ['First Choice', 'Second Choice', 'Third Choice']:
+                #Do they get what they want?
+                if choice == MIDS[mid][f'PTE Preferences [{p}]']:
+                    phappy[(mid,1,p)] = choice_happiness[choice]
+                    phappy[(mid,2,p)] = choice_happiness[choice]
+                    phappy[(mid,3,p)] = choice_happiness[choice]
+                #Do they get it WHEN they want it
+                if choice == MIDS[mid]['PTE Block Preference [Block 1]']:
+                    try:
+                        phappy[(mid,1,p)] = (phappy[(mid,1,p)]+choice_happiness[choice])/2
+                    except KeyError:
+                        phappy[(mid,1,p)] = 0 
+                elif choice == MIDS[mid]['PTE Block Preference [Block 2]']:
+                    try:
+                        phappy[(mid,2,p)] = (phappy[(mid,2,p)]+choice_happiness[choice])/2
+                    except KeyError:
+                        phappy[(mid,2,p)] = 0 
+                elif choice == MIDS[mid]['PTE Block Preference [Block 3]']:
+                    try:
+                        phappy[(mid,3,p)] = (phappy[(mid,3,p)]+choice_happiness[choice])/2
+                    except KeyError:
+                        phappy[(mid,2,p)] = 0 
+    
+    #Fill in missing data with 0's for assignment purposes.
+    for mid in MIDN:
+        PS[(mid,1)] = 0
+        PS[(mid,2)] = 0
+        PS[(mid,3)] = 0
+        try:
+            PS[(mid,PS[mid])] = 1
+        except KeyError:
+            x=62
+            
+    for mid in MIDN:
+        Stem[(mid,1)] = 0
+        Stem[(mid,2)] = 0
+        Stem[(mid,3)] = 0
+        try:
+            Stem[(mid,Stem[mid])] = 1
+        except KeyError:
+            x=62
+            
+    for mid in MIDN:
+        LREC[(mid,1)] = 0
+        LREC[(mid,2)] = 0
+        LREC[(mid,3)] = 0
+        try:
+            LREC[(mid,LREC[mid])] = 1
+        except KeyError:
+            x=62
+            
+    ThreeC = {}
+    for mid in MIDN:
+        ThreeC[mid] = 0
+        if MIDS[mid]['Class you will be after graduation'] == '3/C':
+            ThreeC[mid] = 1
+        
+    import pyomo.environ as pyo
+
+    model = pyo.ConcreteModel()
+    
+    #Var for assignment of leave
+    model.l = pyo.Var(MIDN, blocks, domain=pyo.Boolean) 
+    
+    #Var for assignment of PTEs
+    model.p = pyo.Var(MIDN, blocks, PTEs, domain=pyo.Boolean)
+    
+    #Var for assignment of Cruises
+    model.c = pyo.Var(MIDN, blocks, cruises, domain=pyo.Boolean)
+        
+    
+    def obj(model):
+        return (
+        (sum(model.l[m,b]*lhappy[m,b]*(start_value-OOM[m]) for m in MIDN for b in blocks) + 
+        sum(model.c[m,b,c]*chappy[m,b,c]*(start_value-OOM[m]) for m in MIDN for b in blocks for c in cruises) + 
+        sum(model.p[m,b,p]*phappy[m,b,p]*(start_value-OOM[m]) for m in MIDN for b in blocks for p in PTEs))
+    )
+    model.obj = pyo.Objective(rule = obj, sense = pyo.maximize)
+    
+    def one(model, m):
+        return sum(model.l[m,b] for b in blocks) >= 1 - MIDS[m]['Do you want to voluntarily give up leave?']
+    model.one = pyo.Constraint(MIDN, rule = one)
+    
+    def two(model, m):
+        return sum(model.c[m,b,c] for b in blocks for c in cruises) == 1
+    model.two = pyo.Constraint(MIDN, rule = two)
+    
+    def three(model, m):
+        return sum(model.p[m,b,p] for b in blocks for p in PTEs) >= 1
+    model.three = pyo.Constraint(MIDN, rule = three)
+    
+    def four(model, m, b):
+        return model.l[m,b] + sum(model.p[m,b,p] for p in PTEs) + sum(model.c[m,b,c] for c in cruises) == 1
+    model.four = pyo.Constraint(MIDN, blocks, rule = four)
+    
+    def five(model, m, p):
+        return sum(model.p[m,b,p] for b in blocks) <= 1
+    model.five = pyo.Constraint(MIDN, PTEs, rule = five)
+    
+    def six(model, b, p):
+        return sum(model.p[m,b,p] for m in MIDN) >= MINS[b,p]
+    model.six = pyo.Constraint(blocks, PTEs, rule = six)
+    
+    def six1(model, b, p):
+        return sum(model.p[m,b,p] for m in MIDN) <= MAXS[b,p]
+    model.six1 = pyo.Constraint(blocks, PTEs, rule = six1)
+    
+    def seven(model, b, c):
+        return sum(model.c[m,b,c] for m in MIDN) >= MINS[b,c]
+    model.seven = pyo.Constraint(blocks, cruises, rule = seven)
+    
+    def seven1(model, b, c):
+        return sum(model.c[m,b,c] for m in MIDN) <= MAXS[b,c]
+    model.seven1 = pyo.Constraint(blocks, cruises, rule = seven1)
+    
+    #def ate(model, m,b):
+    #    return model.p[m,b,'PS'] == PS[m,b]
+    #model.ate = pyo.Constraint(MIDN, blocks, rule = ate)
+    
+    #def ate2(model, m,b):
+    #    return model.p[m,b,'STEM'] == Stem[m,b]
+    #model.ate2 = pyo.Constraint(MIDN, blocks, rule = ate2)
+    
+    #def ate3(model, m,b):
+    #    return model.p[m,b,'LREC'] == LREC[m,b]
+    #model.ate3 = pyo.Constraint(MIDN, blocks, rule = ate3)
+    
+    def nine(model, m):
+        return sum(model.c[m,b,'PROTRAMID'] for b in blocks) == ThreeC[m]
+    model.nine = pyo.Constraint(MIDN, rule = nine)
+    
+    solver_result = pyo.SolverFactory('glpk').solve(model)
+    solve_status = solver_result.solver.termination_condition
+    print(f'Solver Status: {solve_status}')
+    
+    end = datetime.now()
+    elapsed = end - start
+    print(f"Pyomo model execution time: {elapsed.total_seconds():.2f} seconds")
+
+    
+    totals = {}
+    for c in cruises:
+        for b in blocks:
+            key = (c,b)
+            totals[key] = 0
+    for mid in MIDN:
+        for c in cruises:
+            for b in blocks:
+                if pyo.value(model.c[mid,b,c]) == 1:
+                    key = (c,b)
+                    totals[key] += 1
+    for p in PTEs:
+        for b in blocks:
+            key = (p,b)
+            totals[key] = 0
+    for mid in MIDN:
+        for p in PTEs:
+            for b in blocks:
+                if pyo.value(model.p[mid,b,p]) == 1:
+                    key = (p,b)
+                    totals[key] += 1
+    totals_df = pd.DataFrame.from_dict(totals, orient = 'index')
+    
+    assignments = {}
+    for mid in MIDN:
+        list = []
+        happy = 0
+        if MIDS[mid]['Do you want to voluntarily give up leave?'] == 1:
+            happy += 0
+        for b in blocks:
+            if pyo.value(model.l[mid,b]) == 1:
+                i = 'Leave'
+                happy += lhappy[mid,b]
+            for c in cruises:
+                if pyo.value(model.c[mid,b,c]) == 1:
+                    i = c
+                    happy += chappy[mid,b,c]
+            for p in PTEs:
+                if pyo.value(model.p[mid,b,p]) == 1:
+                    i = p
+                    happy += phappy[mid,b,p]
+                    
+                    
+            list.append(f'{b}: {i}')
+        list.append(happy)
+        assignments[mid] = list
+    
+    divisor = 9*sum(happiness_weight['first'] for n in range(1,1101))
+    obj = 100*(sum(assignments[i][3] for i in MIDN))/divisor
+    print(f'The model objective is: {obj:.2f}%')
+    
+    example1 = assignments['230001']
+    var1 = 3*happiness_weight['first']
+    var2 = 2.5*happiness_weight['first']
+    
+    dataframe = {}
+    totalonehundo = 0
+    for mid in MIDN:
+        onehundo = 0
+        if assignments[mid][3] == var1:
+            onehundo = 1
+            totalonehundo += 1
+        if assignments[mid][3] == var2 and int(mid) >= 250000:
+            onehundo = 1
+            totalonehundo += 1
+        dataframe[f'"{mid}"'] = assignments[mid] + [OOM[mid]] + [MIDS[mid]['Class you will be after graduation']] + [onehundo]
+    
+    obj2 = 100*(totalonehundo/(len(MIDN)))
+    print(f"The percent of 'totally happy' MIDN is: {obj2:.2f}%")
+    
+    print(f'Example assignment output for MIDN 230001 including their happiness score out of {var1}: {example1}')
+    
+    
+    df = pd.DataFrame(dataframe)
+    df = df.T
+    
+    import altair as alt
+
+    
+    base = (
+        alt.Chart(df).mark_point().encode(
+        alt.X('4:Q').title('OOM'),
+        alt.Y('3:Q').title('Happiness'),
+        alt.Color('5:N')
+    ).properties(
+        width = 250,
+        height = 200
+    )
+    )
+      
+    
+    chart1 = base.facet(
+        column = alt.Column('5:N').title('Happiness vs OOM of the 3 Classes (Linear)')
+    )
+    
+    chart2 = alt.Chart(df).mark_line().encode(
+        alt.X('4:Q').title('OOM'),
+        alt.Y('3:Q').title('Happiness')
+    ).properties(
+        width = 400,
+        height = 300,
+        title = 'Regression of Happiness vs OOM (Linear)'
+    ).transform_regression(
+        '4', '3'
+    )
+        
+    
+    chart3 = alt.Chart(df).mark_bar().encode(
+        alt.X('4:Q').bin(step=100).title('OOM'),
+        alt.Y('mean(6):Q', scale=alt.Scale(domain=[0, 1])).title("Percent of MIDN 'Perfectly Happy'"),
+        [alt.Tooltip('mean(6):Q').title("Percent:").format('.3f')]
+    ).properties(
+        height = 300,
+        width = 400,
+        title = "Number of 'Perfectly Happy' MIDN binned by OOM (Linear)"
+    )
+        
+   
+    print('hello world')
+    
+    return chart1, chart2, chart3, totals_df
+
+
+
+
+def iterative(assignment_sheet, mids_data, happiness_weight):
+    import pandas as pd
+    import xlwings as xl
+    from datetime import datetime
+    start = datetime.now()
+    
+    #Assignments Sheets
+
+    #Plebe Summer 
+    PS = dict(xl.Book(assignment_sheet).sheets['PS'].used_range.value)
+    #STEM
+    Stem = dict(xl.Book(assignment_sheet).sheets['Stem'].used_range.value)
+    #LRECS
+    LREC = dict(xl.Book(assignment_sheet).sheets['LREC'].used_range.value)
+    
+    #Mins & Maxs (included in Assignments sheet for now)
+    MINS = {}
+    p = xl.Book(assignment_sheet).sheets['PTE']['A3'].expand('down').value
+    v = xl.Book(assignment_sheet).sheets['PTE']['B3'].expand('down').value
+    for i in range(len(p)):
+        MINS[(1,p[i])] = v[i]
+        
+    v = xl.Book(assignment_sheet).sheets['PTE']['D3'].expand('down').value
+    for i in range(len(p)):
+        MINS[(2,p[i])] = v[i]
+    
+    v = xl.Book(assignment_sheet).sheets['PTE']['F3'].expand('down').value
+    for i in range(len(p)):
+        MINS[(3,p[i])] = v[i]
+        
+    c = xl.Book(assignment_sheet).sheets['CRUISE']['A3'].expand('down').value
+    v = xl.Book(assignment_sheet).sheets['CRUISE']['B3'].expand('down').value
+    for i in range(len(c)):
+        MINS[(1,c[i])] = v[i]
+        
+    v = xl.Book(assignment_sheet).sheets['CRUISE']['D3'].expand('down').value
+    for i in range(len(c)):
+        MINS[(2,c[i])] = v[i]
+    
+    v = xl.Book(assignment_sheet).sheets['CRUISE']['F3'].expand('down').value
+    for i in range(len(c)):
+        MINS[(3,c[i])] = v[i]
+        
+        
+    MAXS = {}
+    p = xl.Book(assignment_sheet).sheets['PTE']['A3'].expand('down').value
+    v = xl.Book(assignment_sheet).sheets['PTE']['C3'].expand('down').value
+    for i in range(len(p)):
+        MAXS[(1,p[i])] = v[i]
+        
+    v = xl.Book(assignment_sheet).sheets['PTE']['E3'].expand('down').value
+    for i in range(len(p)):
+        MAXS[(2,p[i])] = v[i]
+    
+    v = xl.Book(assignment_sheet).sheets['PTE']['G3'].expand('down').value
+    for i in range(len(p)):
+        MAXS[(3,p[i])] = v[i]
+        
+    c = xl.Book(assignment_sheet).sheets['CRUISE']['A3'].expand('down').value
+    v = xl.Book(assignment_sheet).sheets['CRUISE']['C3'].expand('down').value
+    for i in range(len(c)):
+        MAXS[(1,c[i])] = v[i]
+        
+    v = xl.Book(assignment_sheet).sheets['CRUISE']['E3'].expand('down').value
+    for i in range(len(c)):
+        MAXS[(2,c[i])] = v[i]
+    
+    v = xl.Book(assignment_sheet).sheets['CRUISE']['G3'].expand('down').value
+    for i in range(len(c)):
+        MAXS[(3,c[i])] = v[i]
+        
+    df = pd.read_csv(mids_data, index_col=0, dtype={'Alpha (NO M, example: 265928)':int})
+    MIDS = df.to_dict(orient='dict')
+    
+    #This will eventually be the OOM variable spot
+    #Or it will be in the assignments sheet
+    
+    OOM = {}
+    for k in MIDS.keys():
+        if int(k) < 240000:
+            OOM[k] = (int(k) - 230000) + 1
+        elif int(k) < 250000:
+            OOM[k] = (int(k) - 240000) + 1
+        elif int(k) < 260000:
+            OOM[k] = (int(k) - 250000) + 1
+    
+    MIDN = [k for k,v in MIDS.items()]
+    blocks = [1,2,3]
+    cruises = xl.Book(assignment_sheet).sheets['CRUISE']['A3'].expand('down').value
+    PTEs = xl.Book(assignment_sheet).sheets['PTE']['A3'].expand('down').value
+    trainings = PTEs + cruises
+    
+    
+    
+    
+    #Fill in missing data with 0's for assignment purposes.
+    for mid in MIDN:
+        PS[(mid,1)] = 0
+        PS[(mid,2)] = 0
+        PS[(mid,3)] = 0
+        try:
+            PS[(mid,PS[mid])] = 1
+        except KeyError:
+            x=62
+            
+    for mid in MIDN:
+        Stem[(mid,1)] = 0
+        Stem[(mid,2)] = 0
+        Stem[(mid,3)] = 0
+        try:
+            Stem[(mid,Stem[mid])] = 1
+        except KeyError:
+            x=62
+            
+    for mid in MIDN:
+        LREC[(mid,1)] = 0
+        LREC[(mid,2)] = 0
+        LREC[(mid,3)] = 0
+        try:
+            LREC[(mid,LREC[mid])] = 1
+        except KeyError:
+            x=62
+            
+    ThreeC = {}
+    for mid in MIDN:
+        ThreeC[mid] = 0
+        if MIDS[mid]['Class you will be after graduation'] == '3/C':
+            ThreeC[mid] = 1
+            
+    assignments = {}
+    running_totals = {}
+    for k,v in MAXS.items():
+        running_totals[k] = 0
+    
+    
+    OOMsorted = dict(sorted(OOM.items(), key=lambda item: item[1]))
+    for alpha, rank in OOMsorted.items():
+        mid = MIDS[alpha]
+        assignments[alpha] = []
+        blocksassigned = [0]
+    
+        # Those requesting leave
+        if mid['Do you want to voluntarily give up leave?'] == 'No':
+            for pref in ['First Choice', 'Second Choice', 'Third Choice']:
+                # PTE Assignment
+                if mid['Overall Preference Ranking [PTE]'] == pref:
+                    assignedp = 0
+                    for prefp in ['First Choice', 'Second Choice', 'Third Choice']:
+                        for pte in PTEs:
+                            if mid[f'PTE Preferences [{pte}]'] == prefp and assignedp == 0:
+                                for prefp1 in ['First Choice', 'Second Choice', 'Third Choice']:
+                                    for b in blocks:
+                                        if mid[f'PTE Block Preference [Block {b}]'] == prefp1 and assignedp == 0 and b not in blocksassigned:
+                                            if running_totals[(b, pte)] < MAXS[(b, pte)]:
+                                                running_totals[(b, pte)] += 1
+                                                assignments[alpha].append([b, pte])
+                                                assignedp = 1
+                                                blocksassigned.append(b)
+                # Cruise Assignment    
+                elif mid['Overall Preference Ranking [Cruise]'] == pref:
+                    assignedc = 0
+                    # Protramid
+                    if mid['Class you will be after graduation'] == '3/C':
+                        for prefc in ['First Choice', 'Second Choice', 'Third Choice']:
+                            for b in blocks:
+                                if mid[f'Cruise Block Preference [Block {b}]'] == prefc and assignedc == 0 and b not in blocksassigned:
+                                    if running_totals[(b, 'PROTRAMID')] < MAXS[(b, 'PROTRAMID')]:
+                                        running_totals[(b, 'PROTRAMID')] += 1
+                                        assignments[alpha].append([b, 'PROTRAMID'])
+                                        assignedc = 1
+                                        blocksassigned.append(b)
+                    # Those not doing Protramid
+                    elif mid['Class you will be after graduation'] != '3/C':
+                        for prefc in ['First Choice', 'Second Choice', 'Third Choice']:
+                            for cruise in cruises:
+                                if mid[f'Cruise Preferences [{cruise}]'] == prefc and assignedc == 0:
+                                    for prefc1 in ['First Choice', 'Second Choice', 'Third Choice']:
+                                        for b in blocks:
+                                            if mid[f'Cruise Block Preference [Block {b}]'] == prefc1 and assignedc == 0 and b not in blocksassigned:
+                                                if running_totals[(b, cruise)] < MAXS[(b, cruise)]:
+                                                    running_totals[(b, cruise)] += 1
+                                                    assignments[alpha].append([b, cruise])
+                                                    assignedc = 1
+                                                    blocksassigned.append(b)
+                # Leave Assignment
+                elif mid['Overall Preference Ranking [Leave]'] == pref:
+                    assignedl = 0
+                    for prefl in ['First Choice', 'Second Choice', 'Third Choice']:
+                        for b in blocks:
+                            if mid[f'Leave Block Preference [Block {b}]'] == prefl and assignedl == 0 and b not in blocksassigned:
+                                assignments[alpha].append([b, 'Leave'])
+                                assignedl = 1
+                                blocksassigned.append(b)
+                    
+        # Those not requesting leave
+        elif mid['Do you want to voluntarily give up leave?'] == 'Yes':
+            for pref in ['First Choice', 'Second Choice', 'Third Choice']:
+                # PTE Assignment
+                blocksassigned = []
+                if mid['Overall Preference Ranking [PTE]'] == pref:
+                    assignedp1 = 0
+                    assignedp2 = 0
+                    for prefp in ['First Choice', 'Second Choice', 'Third Choice']:
+                        for pte in PTEs:
+                            if mid[f'PTE Preferences [{pte}]'] == prefp and assignedp1 == 0:
+                                for prefp1 in ['First Choice', 'Second Choice', 'Third Choice']:
+                                    for b in blocks:
+                                        if mid[f'PTE Block Preference [Block {b}]'] == prefp1 and assignedp1 == 0 and b not in blocksassigned:
+                                            if running_totals[(b, pte)] < MAXS[(b, pte)]:
+                                                running_totals[(b, pte)] += 1
+                                                assignments[alpha].append([b, pte])
+                                                assignedp1 = 1
+                                                blocksassigned.append(b)
+                            elif mid[f'PTE Preferences [{pte}]'] == prefp and assignedp2 == 0:
+                                for prefp2 in ['First Choice', 'Second Choice', 'Third Choice']:
+                                    for b in blocks:
+                                        if mid[f'PTE Block Preference [Block {b}]'] == prefp2 and assignedp2 == 0 and b not in blocksassigned:
+                                            if running_totals[(b, pte)] < MAXS[(b, pte)]:
+                                                running_totals[(b, pte)] += 1
+                                                assignments[alpha].append([b, pte])
+                                                assignedp2 = 1
+                                                blocksassigned.append(b)
+                # Cruise Assignment    
+                elif mid['Overall Preference Ranking [Cruise]'] == pref:
+                    assignedc = 0
+                    # Protramid
+                    if mid['Class you will be after graduation'] == '3/C':
+                        for prefc in ['First Choice', 'Second Choice', 'Third Choice']:
+                            for b in blocks:
+                                if mid[f'Cruise Block Preference [Block {b}]'] == prefc and assignedc == 0 and b not in blocksassigned:
+                                    if running_totals[(b, 'PROTRAMID')] < MAXS[(b, 'PROTRAMID')]:
+                                        running_totals[(b, 'PROTRAMID')] += 1
+                                        assignments[alpha].append([b, 'PROTRAMID'])
+                                        assignedc = 1
+                                        blocksassigned.append(b)
+                    # Those not doing Protramid
+                    elif mid['Class you will be after graduation'] != '3/C':
+                        for prefc in ['First Choice', 'Second Choice', 'Third Choice']:
+                            for cruise in cruises:
+                                if mid[f'Cruise Preferences [{cruise}]'] == prefc and assignedc == 0:
+                                    for prefc1 in ['First Choice', 'Second Choice', 'Third Choice']:
+                                        for b in blocks:
+                                            if mid[f'Cruise Block Preference [Block {b}]'] == prefc1 and assignedc == 0 and b not in blocksassigned:
+                                                if running_totals[(b, cruise)] < MAXS[(b, cruise)]:
+                                                    running_totals[(b, cruise)] += 1
+                                                    assignments[alpha].append([b, cruise])
+                                                    assignedc = 1
+                                                    blocksassigned.append(b)
+                                                    
+
+    #Leave happiness: happiness of mid m if they get leave during block b, (m,b):happiness
+    choice_happiness = {'First Choice': happiness_weight['first'], 'Second Choice': happiness_weight['second'], 'Third Choice': happiness_weight['third']}
+    
+    lhappy = {}
+    for mid in MIDN:
+        if MIDS[mid]['Do you want to voluntarily give up leave?'] == 'Yes':
+            MIDS[mid]['Do you want to voluntarily give up leave?'] = 1
+        else:
+            MIDS[mid]['Do you want to voluntarily give up leave?'] = 0
+        for choice in ['First Choice', 'Second Choice', 'Third Choice']:
+            if choice == MIDS[mid]['Leave Block Preference [Block 1]']:
+                lhappy[(mid,1)] = choice_happiness[choice] #weighting first preference exponentially more than other preferences
+            elif choice == MIDS[mid]['Leave Block Preference [Block 2]']:
+                lhappy[(mid,2)] = choice_happiness[choice]
+            elif choice == MIDS[mid]['Leave Block Preference [Block 3]']:
+                lhappy[(mid,3)] = choice_happiness[choice]
+            
+    #Cruise Happiness
+    chappy = {}
+    #Initialize list with all 0's
+    for mid in MIDN:
+        for c in cruises:
+            for choice in ['First Choice', 'Second Choice', 'Third Choice']:
+                chappy[(mid,1,c)] = 0
+                chappy[(mid,2,c)] = 0
+                chappy[(mid,3,c)] = 0
+    for mid in MIDN:
+        for c in cruises:
+            for choice in ['First Choice', 'Second Choice', 'Third Choice']:
+                #Do they get what they want?
+                if choice == MIDS[mid][f'Cruise Preferences [{c}]']:
+                    chappy[(mid,1,c)] = choice_happiness[choice]
+                    chappy[(mid,2,c)] = choice_happiness[choice]
+                    chappy[(mid,3,c)] = choice_happiness[choice]
+                #Do they get it WHEN they want it
+                if choice == MIDS[mid]['Cruise Block Preference [Block 1]']:
+                    try:
+                        chappy[(mid,1,c)] = (chappy[(mid,1,c)]+choice_happiness[choice])/2
+                    except KeyError:
+                        chappy[(mid,1,c)] = 0 
+                elif choice == MIDS[mid]['Cruise Block Preference [Block 2]']:
+                    try:
+                        chappy[(mid,2,c)] = (chappy[(mid,2,c)]+choice_happiness[choice])/2
+                    except KeyError:
+                        chappy[(mid,2,c)] = 0 
+                elif choice == MIDS[mid]['Cruise Block Preference [Block 3]']:
+                    try:
+                        chappy[(mid,3,c)] = (chappy[(mid,3,c)]+choice_happiness[choice])/2
+                    except KeyError:
+                        chappy[(mid,2,c)] = 0 
+                    
+    #PTE Happiness
+    phappy = {}
+    #Initialize list with all 0's
+    for mid in MIDN:
+        for p in PTEs:
+            for choice in ['First Choice', 'Second Choice', 'Third Choice']:
+                phappy[(mid,1,p)] = 0
+                phappy[(mid,2,p)] = 0
+                phappy[(mid,3,p)] = 0
+    for mid in MIDN:
+        for p in PTEs:
+            for choice in ['First Choice', 'Second Choice', 'Third Choice']:
+                #Do they get what they want?
+                if choice == MIDS[mid][f'PTE Preferences [{p}]']:
+                    phappy[(mid,1,p)] = choice_happiness[choice]
+                    phappy[(mid,2,p)] = choice_happiness[choice]
+                    phappy[(mid,3,p)] = choice_happiness[choice]
+                #Do they get it WHEN they want it
+                if choice == MIDS[mid]['PTE Block Preference [Block 1]']:
+                    try:
+                        phappy[(mid,1,p)] = (phappy[(mid,1,p)]+choice_happiness[choice])/2
+                    except KeyError:
+                        phappy[(mid,1,p)] = 0 
+                elif choice == MIDS[mid]['PTE Block Preference [Block 2]']:
+                    try:
+                        phappy[(mid,2,p)] = (phappy[(mid,2,p)]+choice_happiness[choice])/2
+                    except KeyError:
+                        phappy[(mid,2,p)] = 0 
+                elif choice == MIDS[mid]['PTE Block Preference [Block 3]']:
+                    try:
+                        phappy[(mid,3,p)] = (phappy[(mid,3,p)]+choice_happiness[choice])/2
+                    except KeyError:
+                        phappy[(mid,2,p)] = 0 
+                        
+    sorted_assignments = {}
+    for alpha, assignment in assignments.items():
+        happy = 0
+        if MIDS[alpha]['Do you want to voluntarily give up leave?'] == 1:
+            happy += 3
+        for i in assignment:
+            if i[0] == 1:
+                first = i[1]
+                if first == 'Leave':
+                    happy += lhappy[alpha,1]
+                elif first in cruises:
+                    happy += chappy[alpha,1,first]
+                elif first in PTEs:
+                    happy += phappy[alpha,1,first]
+            elif i[0] == 2:
+                second = i[1]
+                if second == 'Leave':
+                    happy += lhappy[alpha,2]
+                elif second in cruises:
+                    happy += chappy[alpha,2,second]
+                elif second in PTEs:
+                    happy += phappy[alpha,2,second]
+            elif i[0] == 3:
+                third = i[1]
+                if third == 'Leave':
+                    happy += lhappy[alpha,3]
+                elif third in cruises:
+                    happy += chappy[alpha,3,third]
+                elif third in PTEs:
+                    happy += phappy[alpha,3,third]  
+        sorted_assignments[alpha] = [f'1: {first}', f'2: {second}', f'3: {third}', happy]
+        
+    totals = {}
+    for c in cruises:
+        for b in blocks:
+            key = (c,b)
+            totals[key] = 0
+    for mid in MIDN:
+        for c in cruises:
+            for b in blocks:
+                key = (c,b)
+                key_inv = (b,c)
+                totals[key] = running_totals[key_inv]
+    for p in PTEs:
+        for b in blocks:
+            key = (p,b)
+            totals[key] = 0
+    for mid in MIDN:
+        for p in PTEs:
+            for b in blocks:
+                key = (p,b)
+                key_inv = (b,p)
+                totals[key] = running_totals[key_inv]
+    totals_df = pd.DataFrame.from_dict(totals, orient = 'index')
+    
+    var1 = 3*happiness_weight['first']
+    var2 = 2.5*happiness_weight['first']
+    
+    dataframe = {}
+    totalonehundo = 0
+    for mid in MIDN:
+        onehundo = 0
+        if sorted_assignments[mid][3] == var1:
+            onehundo = 1
+            totalonehundo += 1
+        if sorted_assignments[mid][3] == var2 and int(mid) >= 250000:
+            onehundo = 1
+            totalonehundo += 1
+        dataframe[f'"{mid}"'] = sorted_assignments[mid] + [OOM[mid]] + [MIDS[mid]['Class you will be after graduation']] + [onehundo]
+    df = pd.DataFrame(dataframe)
+    df = df.T
+    
+    end = datetime.now()
+    elapsed = end - start
+    print(f"Iterative approach execution time: {elapsed.total_seconds():.2f} seconds")   
+    
+    obj = 100*(sum(sorted_assignments[i][3] for i in MIDN)/(3300*happiness_weight['first']*3))
+    print(f'The model objective is: {obj:.2f}%')
+    
+    obj2 = 100*(totalonehundo/(len(MIDN)))
+    print(f"The percent of 'totally happy' MIDN is: {obj2:.2f}%")
+    
+    example = sorted_assignments['230001']
+    print(f'Example assignment output for MIDN 230001 including their happiness score out of {var1}: {example}')
+
+    
+    
+    
+    import altair as alt
+
+    
+    base = (
+        alt.Chart(df).mark_point().encode(
+        alt.X('4:Q').title('OOM'),
+        alt.Y('3:Q').title('Happiness'),
+        alt.Color('5:N')
+    ).properties(
+        width = 250,
+        height = 200
+    )
+    )
+      
+    
+    chart1 = base.facet(
+        column = alt.Column('5:N').title('Happiness vs OOM of the 3 Classes (Iterative)')
+    )
+    
+    chart2 = alt.Chart(df).mark_line().encode(
+        alt.X('4:Q').title('OOM'),
+        alt.Y('3:Q').title('Happiness')
+    ).properties(
+        width = 400,
+        height = 300,
+        title = 'Regression of Happiness vs OOM (Iterative)'
+    ).transform_regression(
+        '4', '3'
+    )
+        
+    
+    chart3 = alt.Chart(df).mark_bar().encode(
+        alt.X('4:Q').bin(step=100).title('OOM'),
+        alt.Y('mean(6):Q', scale=alt.Scale(domain=[0, 1])).title("Percent of MIDN 'Perfectly Happy'"),
+        [alt.Tooltip('mean(6):Q').title("Percent:").format('.3f')]
+    ).properties(
+        height = 300,
+        width = 400,
+        title = "Number of 'Perfectly Happy' MIDN binned by OOM (Iterative)"
+    )
+        
+   
+    print('hello world')
+    
+    return chart1, chart2, chart3, totals_df
+    
