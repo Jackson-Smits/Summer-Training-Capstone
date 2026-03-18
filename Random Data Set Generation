@@ -1,3 +1,6 @@
+# This is an iteration of the random data set generator in which 50% of midshipmen place YPs as their first PTE preference 
+# and 50% place SWO as their first cruise preference independently of one another.
+
 import random
 import pandas as pd
 random_alphas = [i for i in range(230000,231100)]+[i for i in range(240000,241100)]+[i for i in range(250000,251100)]
